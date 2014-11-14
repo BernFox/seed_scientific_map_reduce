@@ -1,0 +1,113 @@
+Explanation of code for Seed Scientific
+By Aaron Bernkopf
+
+Overview:
+
+1. Retrieving Data
+2. Inverting Data
+3. Calculating Tag Similarity Matrix
+4. Using MapReduce to calculate Tag Similarity Triangle
+5. Calculating Artist Similarity Matrix
+6. Comments/Next Steps
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Retrieving Data
+
+I used the pylast library to access Last.FM's api. 
+I use a series of list comprehensions to gather and format the data. It then writes it out as a series of json objects.
+
+This code is found in seed_get_lastfm.py, just run the scipt using 'run seed_get_lastfm.py' while your inside python
+
+
+
+
+2. Inverting Data
+
+In order to calculate the tag similarity I inverted the data from the pervious step. The data we invert first looks something like this:
+
+		{Artist: 'artist_name', Tags: [Tag1, Tag2, ...]}
+
+I inverted the data to look something like this
+
+		{Tag: 'tag_name', Artists: [Artist1, Artist2, ...]}
+
+Once its inverted this way, we can use the Jaccard similarity index to measure tag similarity
+Again I use a series of list comprehensions to gather and format the data. It then writes it out as a series of json objects.
+
+This code is found in artist_inversion.py, just run the scipt using 'run artist_inversion.py' while your inside python
+
+
+
+
+3. Calculating Tag Similarity Matrix
+
+At first I tried to calculate the tag similarity matrix with the Jaccard Sim Index using nested list comprehensions. 
+THIS TAKES FOREVER, it is O^2 complexand has about 16355 items in the data set. Thats 267,486,025 computations.
+This version succeeds but it takes several hours. 
+
+It puts it's resuts in a pandas DataFrame and then outputs it the DataFrame as a csv. The csv file turns out to be about 1.4gb.
+
+You can find this code in lastfm_data_analysis.py, run it using 'run lastfm_data_analysis.py'
+
+
+
+
+
+4. Using MapReduce to calculate Tag Similarity Triangle
+
+Because the first version took so long, I reimplemented the similarity calc with a MapReduce using python's MRJob. 
+This time, not only does teh calc implement a MapReduce, but it also reduces the number of calculations it needs to take 
+by only calculating the trangular half of the tag similarity matrix.
+
+This implementation is faster, and more memory efficient! It can be run in parallel on a Hadoop Cluster, or in parallel locally.
+This file outputs a file that contains a series of Tag names and json objects. Each json object contains a dictionary that represents
+the corresponding tag's row in the sim triangle.We would need to reflect the data across it's diagonal to produce the similarity matrix 
+from the output of the MapReduce. 
+
+This code can be found in mr_diag.py, and can be run by invoking 'python mr_diag.py -r local inverted_artist_data.txt > sim_diag_data.txt'
+while in side the unix shell. 
+
+Using this code cuts the needed number of computations in half, and then using MapReduce takes only about 10mins to completed, 
+versus the many hours it takes to calc the data in the O^2 case. 
+
+
+
+
+5. Calculating Artist Similarity Matrix
+
+Here we go back to the output of seed_get_lastfm.py and use it's outputs to calc inter artist similarity. We again use the Jaccard index 
+to do so. We calculate it using nested list comprehensions. This is ok in this case because there are only 1000 items in the data set. 
+
+We can also calc the data using the MapReduce code in mr_diag.py by importing its code, making a runner object and then running it programatically. I didn't have time to write it as a function so you have to go in there and monkey with the code. I'd advise just 
+running the standard O^2 case instead of the MapReduce here.
+
+We can also see differences between our calc and last.fm's calc of similarity if we use the see_sim_diff() function. To do so fisrt fun 
+the sim_matrix() function and feed its output into the see_sim_diff() function. That function will calculate and print the error 
+between our calc and theirs, and returns a sorted DataFrame containing our sim valuse and last.fm's. 
+
+We appear to trend in the sam direction as last.fm's data, meaning as their similarity values, so do ours, 
+but there is an average difference of 0.04 between our metric and theirs.
+
+This code can be found in artist_metric.py, and can be run with 'run artist_metric.py' while inside python.
+
+
+
+
+
+6. Comments/Next Steps
+
+I calced artist similarity, tag similarity, error between our metric and last.fm's, and implemented a MapReduce. 
+The next things I might do to make our data more interesting is by incorporating the tag and artist weights to improve our
+similiarity metric.
+
+The next thing I might do is to implement a Multi-Dimensional scaling in order to map our similarity data to a a lower dimension, 
+and then visualize the data. Then we could actually see how similar the tags and artists are. 
+
+It would be good to then reimplement this code, but all of it using a MapReduce on an actual Hadoop cluster. 
+And then of course to make it a web application, with git as it's version control.
+
+
+
+
+
